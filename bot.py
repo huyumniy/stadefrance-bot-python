@@ -1,431 +1,350 @@
-#from selenium import webdriver
-import undetected_chromedriver as webdriver
 import time
 from selenium.webdriver.common.by import By
-from random import choice
-from twocaptcha import TwoCaptcha
-from selenium.common.exceptions import TimeoutException, WebDriverException
-from selenium.webdriver.support.ui import WebDriverWait
-import requests,os
+from random import choice, randint
 from selenium.webdriver.support.ui import Select
-from selenium.webdriver.chrome.service import Service
-import pandas as pd
-import random
 import soundfile as sf
 import sounddevice as sd
+from helpers import find_category_value, ua
+from selenium_helpers import loginorfindx, check_for_element, \
+ check_for_elements, ensure_check_elem, init_selenium_driver, \
+ get_indexeddb_data, handle_captcha_solve, wait_for_element
+from data_processing import genselx
+import eel
+import socket
+import threading
 
 
-api_key = "29ada3bf8a7df98cfa4265ea1145c77b"
 INPUT='input.xlsx'
+isInitialRun = True
 
-TIMEWAIT = 6
+def run(thread, link, time_to_wait, browsersAmount, proxyInput):
+    global isInitialRun
+    selxs_static=genselx(xlsx_name=INPUT)
 
-
-def genselx():
-    # Read the Excel file into a Pandas DataFrame
-    df = pd.read_excel(INPUT)
-
-    # Convert to list of dictionaries, handling missing values
-    matches = []
-    for _, row in df.iterrows():
-        match_data = {
-            "match": row["TEAMS"],
-            "id": str(row["ID"]).replace(" ", "")  # Remove spaces in the ID
-        }
-
-        # Iterate through all category columns dynamically
-        for col in df.columns[2:]:  # Skip 'TEAMS' and 'ID' columns
-            match_data[col] = int(row[col]) if not pd.isna(row[col]) else 0  # Default to 0 for NaN
-
-        matches.append(match_data)
-
-    return matches
-
-
-
-
-def ua():
-    with open('uas') as ugs:
-        uas=[x.strip() for x in ugs.readlines()]
-        ugs.close()
-    return choice(uas)
-
-
-def downloadFile(url):
-    try:
-        os.remove('captcha.png')
-    except:
-        pass
-    with requests.get(url, stream=True, headers={
-
-
-        'accept': '*/*',
-        'accept-encoding': 'gzip, deflate, br',
-        'accept-language': 'en-US,en;q=0.9',
-        'referer': 'https://access.tickets.fifa.com/pkpcontroller/wp/FWCMaint2/index_en.html?queue=05-FWC22-FCFS-PROD',
-        'sec-ch-ua': '"Google Chrome";v="105", "Not)A;Brand";v="8", "Chromium";v="105"',
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36'
-    }) as r:
-        r.raise_for_status()
-        with open('captcha.png', 'wb') as f:
-            chunk_num = 1
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-                chunk_num = chunk_num + 1
-
-
-def solveit():
-    solver = TwoCaptcha(api_key)
-    try:
-        result = solver.normal('captcha.png')['code']
-        return [1, result]
-    except Exception as e:
-        return [0, 0]
-
-
-def ensure_check_elem(selector, methode=By.XPATH, tmt=20, click=False):
-    global driver
-    var = None
-    tmt0 = 0
-    while True:
-        if tmt0 >= tmt:
-            raise Exception('Not Found')
-        try:
-            var = driver.find_element(methode, selector)
-            if click:
-                var.click()
-            break
-        except:
-            pass
-        tmt0 += 0.5
-        time.sleep(0.5)
-    return var
-
-
-def check():
-    while True:
-        a = input('>> ')
-        if a == "exit":
-            break
-        try:
-            print(eval(a))
-        except Exception as r:
-            print(r)
-
-
-def loginorfindx(link, sel=''):
-    
-    solved = 0
-    while True:
-        if solved == 0:
-            try:
-                e=driver.find_element(By.XPATH,'//*[@id="img_captcha"]')
-                i_url = ensure_check_elem('//*[@id="img_captcha"]', tmt=2).screenshot_as_png
-                try:
-                    os.remove('captcha.png')
-                except:
-                    pass
-                r=open('captcha.png','wb')
-                r.write(i_url)
-                r.close()
-
-                capres = solveit()
-                if capres[0] == 1:
-                    ensure_check_elem('//*[@id="secret"]').send_keys(capres[-1])
-                    ensure_check_elem('//*[@id="submit_button"]', click=True)
-                
-            except:
-                pass
-            
-        try:
-            driver.find_element(By.XPATH,
-                                '//*[@id="actionButtonText"]').click()
-            solved=1
-        except:
-            pass
-
-        if sel != "":
-            try:
-                seled = driver.find_element(By.XPATH, sel)
-                break
-            except:
-                pass
-        else:
-            if "/event/date/product/" in driver.current_url:
-                break
-            else:
-                pass
-
-            try:
-                eml = ensure_check_elem('//form[@id="frmLogin"]//input[@name="email"]', tmt=2)
-                eml.clear()
-                for k in USR:
-                    eml.send_keys(k)
-                    time.sleep(.1)
-                time.sleep(2)
-                pwd = ensure_check_elem('//form[@id="frmLogin"]//input[@name="password"]', tmt=2)
-                pwd.clear()
-                for k in PWD:            
-                    pwd.send_keys(k)
-                    time.sleep(.1)
-                time.sleep(4)
-                try:
-                    driver.find_element(
-                        By.XPATH, '//*[@id="onetrust-accept-btn-handler"]').click()
-                except:
-                    pass
-                ensure_check_elem('//button[@type="submit" and @data-skform="frmLogin"]', tmt=2, click=True)
-                # time.sleep(5)
-                timer = 15
-                while timer > 0:
-                    if 'auth.fifa.com' not in driver.current_url: 
-                        break
-                    else:
-                        timer -= 1
-                        time.sleep(1)
-                if link and timer > 0: driver.get(link)
-            except:
-                pass
-
-
-def wait_for_page_load(driver, timeout=30):
-    """
-    Waits until the page is fully loaded.
-
-    :param driver: The WebDriver instance.
-    :param timeout: The maximum time to wait for the page to load.
-    :return: None
-    :raises TimeoutException: If the page does not load within the timeout.
-    :raises WebDriverException: For WebDriver-related errors.
-    """
-    try:
-        WebDriverWait(driver, timeout).until(
-            lambda d: d.execute_script("return document.readyState") == "complete"
-        )
-        print("Page fully loaded!")
-    except TimeoutException:
-        print("Timeout: The page did not load completely within the given time.")
-        raise
-    except WebDriverException as e:
-        print(f"WebDriver error occurred: {e}")
-        raise
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        raise
-
-
-def genhead():
-    headers = {}
-    headers["user-agent"]= ua()
-    return headers
-options = webdriver.ChromeOptions()
-options.add_argument("--start-maximized")
-#options.add_argument("--incognito")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("--log-level=3")
-options.add_argument("--disable-web-security")
-options.add_argument("--disable-site-isolation-trials")
-options.add_argument('--ignore-certificate-errors')
-options.add_argument('--lang=EN')
-
-
-prefs = {"credentials_enable_service": False,
-     "profile.password_manager_enabled": False}
-options.add_experimental_option("prefs", prefs)
-if __name__=='__main__':
-    selxs_static=genselx()
-    USR = input('Username: ')
-    PWD = input('Password: ')
-    link = input('Link: ')
-    chromedriver_path = os.path.join(os.getcwd(), 'chromedriver.exe')
-    
-    # Create a Service object using the chromedriver path
-    service = Service(executable_path=chromedriver_path)
-    if os.getlogin() in ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15',
-    'S3U1', 'S3U2', 'S3U3', 'S3U4', 'S3U5', 'S3U6', 'S3U7', 'S3U8', 'S3U9', 'S3U10', 'S3U11', 'S3U12', 'S3U13', 'S3U14', 'S3U15', 'S3U16',
-    'Admin3']:
-        driver = webdriver.Chrome(
-            version_main=129,
-            options=options,
-            enable_cdp_events=True
-        )
-    else:
-        driver = webdriver.Chrome(
-            options=options,
-            enable_cdp_events=True
-        )
+    driver = init_selenium_driver(proxyInput)
     driver.get(link)
-    #input('*')
-    loginorfindx(link)
-    try:
-        driver.find_element(
-            By.XPATH, '//*[@id="onetrust-accept-btn-handler"]').click()
-    except:
-        pass
-    stc=input('Use Static selector(y/n):')
-    if stc.lower()=='y':
-        print('ID', "Match")
-        for i, x in enumerate(selxs_static):
-            print(i, x['match'])
+    if proxyInput != '':
+        driver.get('chrome://extensions/')
+        time.sleep(1)
 
-        idxs = input('Insert match Index:').split(',')
-        selxs = []
+        # Example script to retrieve extensions
+        script_array = """
+                    const callback = arguments[0];
+                    chrome.management.getAll((extensions) => {
+                        callback(extensions);
+                    });
+                """
 
-        for idx in idxs:
-            idx = int(idx)
-            match_data = selxs_static[idx]
+        # Execute the JavaScript and get the result
+        extensions = driver.execute_async_script(script_array)
+        filtered_extensions = [extension for extension in extensions if "BP Proxy Switcher" in extension['name']]
 
-            # Filter out non-category fields (e.g., match, id)
-            categories = [
-                {"name": key, "value": value}
-                for key, value in match_data.items()
-                if key not in ["match", "id"]  # Add additional fields to exclude here if needed
-            ]
+        extension_id = [extension['id'] for extension in filtered_extensions if 'id' in extension][0]
+        extension_url = f'chrome-extension://{extension_id}/popup.html'
+        driver.get(extension_url)
+        # proxies = parse_data_from_file('proxies.txt')
+        delete_tab = driver.find_element(By.XPATH, '//*[@id="deleteOptions"]')
+        driver.execute_script("arguments[0].scrollIntoView();", delete_tab)
+        delete_tab.click()
+        time.sleep(1)
+        driver.find_element(By.XPATH, '//*[@id="privacy"]/div[1]/input').click()
+        driver.find_element(By.XPATH, '//*[@id="privacy"]/div[2]/input').click()
+        driver.find_element(By.XPATH, '//*[@id="privacy"]/div[4]/input').click()
+        driver.find_element(By.XPATH, '//*[@id="privacy"]/div[7]/input').click()
+        optionsOK = driver.find_element(By.XPATH, '//*[@id="optionsOK"]')
+        driver.execute_script("arguments[0].scrollIntoView();", optionsOK)
+        optionsOK.click()
+        time.sleep(1)
+        edit = driver.find_element(By.XPATH, '//*[@id="editProxyList"]/small/b')
+        driver.execute_script("arguments[0].scrollIntoView();", edit)
+        edit.click()
+        time.sleep(1)
+        text_area = driver.find_element(By.XPATH, '//*[@id="proxiesTextArea"]')
+        text_area.send_keys(proxyInput)
+        time.sleep(1)
+        ok_button = driver.find_element(By.XPATH, '//*[@id="addProxyOK"]')
+        driver.execute_script("arguments[0].scrollIntoView();", ok_button)
+        ok_button.click()
+        time.sleep(3)
+        proxy_switch_list = driver.find_elements(By.CSS_SELECTOR, '#proxySelectDiv > div > div > ul > li')
+        if len(proxy_switch_list) == 3: proxy_switch_list[2].click()
+        else: proxy_switch_list[randint(2, len(proxy_switch_list))-1].click()
+        time.sleep(5)
+        proxy_auto_reload_checkbox = driver.find_element(By.XPATH, '//*[@id="autoReload"]')
+        driver.execute_script("arguments[0].scrollIntoView();", proxy_auto_reload_checkbox)
+        proxy_auto_reload_checkbox.click()
+        time.sleep(2)
 
-            # Restructure the data
-            match_data_with_categories = {
-                "match": match_data["match"],
-                "id": match_data["id"],
-                "categories": categories,
-                "selector": f'//li[contains(@id,"{match_data["id"]}")]//*[@class="button performance-select-btn"]'
-            }
-            selxs.append(match_data_with_categories)
+    driver.get('https://nopecha.com/setup#awscaptcha_auto_open=false|awscaptcha_auto_solve=true|awscaptcha_solve_delay=true|awscaptcha_solve_delay_time=1000|disabled_hosts=|enabled=true|funcaptcha_auto_open=false|funcaptcha_auto_solve=false|funcaptcha_solve_delay=true|funcaptcha_solve_delay_time=1000|geetest_auto_open=false|geetest_auto_solve=true|geetest_solve_delay=true|geetest_solve_delay_time=1000|hcaptcha_auto_open=true|hcaptcha_auto_solve=true|hcaptcha_solve_delay=true|hcaptcha_solve_delay_time=3000|sub_1QsSuQCRwBwvt6ptjP0yralq|keys=|lemincaptcha_auto_open=false|lemincaptcha_auto_solve=true|lemincaptcha_solve_delay=true|lemincaptcha_solve_delay_time=1000|perimeterx_auto_solve=false|perimeterx_solve_delay=true|perimeterx_solve_delay_time=1000|recaptcha_auto_open=false|recaptcha_auto_solve=false|recaptcha_solve_delay=true|recaptcha_solve_delay_time=2000|textcaptcha_auto_solve=true|textcaptcha_image_selector=#img_captcha|textcaptcha_input_selector=#secret|textcaptcha_solve_delay=true|textcaptcha_solve_delay_time=100|turnstile_auto_solve=false|turnstile_solve_delay=true|turnstile_solve_delay_time=1000')
 
-        selx = '|'.join([sel['selector'] for sel in selxs])
-        # print("selxs",selxs)
-    else:
-        venue = ''
-        vyn = input('Select venue (y|n): ')
-        if vyn.lower() == ('y'):
-            print('ID', 'Venue')
-            for v in driver.find_elements(By.XPATH, '//*[@id="venue"]//option'):
-                print(v.get_attribute('value'), v.text)
-            venue = input('Type Venue ID: ').strip()
-        team = ''
-        tyn = input('Select team (y|n): ')
-        if tyn.lower() == ('y'):
-            print('ID', 'Team')
-            for t in driver.find_elements(By.XPATH, '//*[@id="team"]//option'):
-                print(t.get_attribute('value'), t.text)
-            team = input('Type team ID: ').strip()
-
-        selx=f'//li[contains(@data-venue-id,"{venue}") and (contains(@data-opposing-team-id,"{team}") or contains(@data-host-team-id,"{team}"))]//*[@class="button performance-select-btn"]'
-    while True: 
-        # print("selx",selx)
+    while True:
         driver.execute_cdp_cmd(
             'Network.setUserAgentOverride', {"userAgent": ua()})
         time.sleep(2)
         driver.execute_script(f"window.open('{link}/','_self')")
-        # driver.get('https://resale-intl.fwc22.tickets.fifa.com/')
-        if 'too many' in driver.page_source:
-            print('too many')
-            time.sleep(10)
-            continue
-        # if venue != "":
-        #     Select(ensure_check_elem('//*[@id="venue"]')).select_by_value(venue)
-        # if team != "":
-        #     Select(ensure_check_elem('//*[@id="team"]')).select_by_value(team)
-        main_match = None
-        brk = 0
-        while True:
-            try:
-                listings = driver.find_elements(
-                    By.XPATH, selx)
-                if len(listings) == 0:
-                    break
-                brk = 1
-                random_listing = choice(list(range(len(listings))))
-                
-                element=listings[random_listing]
+        check_for_element(driver, '//*[@id="onetrust-accept-btn-handler"]', xpath=True, click=True)
 
-                driver.execute_script("arguments[0].click();", element)
+        if isInitialRun and 'peak35' not in driver.current_url:
+            print('initialRun')
+            cookie_button = wait_for_element(driver, '//*[@id="didomi-notice-agree-button"]', timeout=30, xpath=True, debug=True)
+            print(cookie_button, 'cookie_button')
+            if cookie_button:
+                time.sleep(5)
+                print('trying to click')
+                check_for_element(driver, '//*[@id="didomi-notice-agree-button"]', xpath=True, click=True, debug=True)
+                isInitialRun = False
 
-                # driver.execute_script(
-                #     f"document.querySelectorAll('.button.performance-select-btn')[{choice(list(range(len(listings))))}].click()")
-                break
-            except Exception as fdf:
-                print(fdf)
-                pass
-        # print(brk)
-
-        if brk == 0:
-            continue
-        #try:driver.execute_script('''for (i of [0,1,2,3,4,5,6]){document.querySelectorAll('a[title="Select"]')[0].click()}''')
-        #except:pass
-        # print('before bskt=0-')
-        host = driver.find_element(By.XPATH, '//span[@class="team host"]').text
-        opposing = driver.find_element(By.XPATH, '//span[@class="team opposing"]').text
-        title = f"{host} vs {opposing}"
-        # print(title)
+        if 'peak35' in driver.current_url: handle_captcha_solve(driver)
         bskt=0
         time.sleep(.5)
         categ_sels=[]
         selected_category = None
-        # print('selxs', selxs)
-        for i in selxs:
-            if i.get('match'):
-                # print(i.get('match'))
-                if i.get('match') == title:
-                    all_category_names = sorted({category['name'] for category in i['categories'] if category['value'] != 0})
-                    # print("all_category_names",all_category_names)
-                    selected_category = random.choice(all_category_names)
-                    categ_sels.append(f'//tr[.//th[contains(., "{selected_category}")]]//select[@aria-label="Quantity"]')
+        
+        title_raw = check_for_element(driver, '.product_title_container > p')
+        title = title_raw.text if title_raw else None
 
-        for itm in range(len(driver.find_elements(By.XPATH, "|".join(categ_sels)))):
-            if bskt>=6:
-                break
-            try:
-                selected_value = {category['name']: category['value'] for item in selxs for category in item['categories']}.get(selected_category, None)
-                # print(selected_value)
-                elem = ensure_check_elem("|".join(categ_sels),click=True,tmt=1)
-                dropdown = Select(elem)
+        if title is None:
+            print('Не вдалось знайти назву матчу')
+            time.sleep(time_to_wait)
+            continue
+        main_match = [i for i in selxs_static if i.get('match') == title]
+        if not main_match: 
+            print('Такого матчу не існує в таблиці.')
+            time.sleep(time_to_wait)
+            continue
+        
+        if check_for_element(driver, 'section[style="display: block;"][id="no_ticket_on_sale"]'):
+            print('No tickets on sale.')
+            time.sleep(time_to_wait)
+            continue
+
+        all_category_names = sorted({category['name'] for category in \
+         main_match[0]['categories'] if category['value'] != 0})
+        if len(all_category_names) == 0:
+            print('Немає даних на цю подію в таблиці.')
+            time.sleep(time_to_wait)
+            continue
+        
+        # RESALE
+        if 'resale' in driver.current_url:
+            start_over = False
+            no_filtration = False
+
+            seat_categories_table_raw = check_for_elements(driver, \
+            '//div[@id="seat_categories_table"]//label/span', xpath=True, debug=True)
+            seat_categories_table =\
+            [seat_category.text for seat_category in seat_categories_table_raw]
+            
+            if seat_categories_table_raw:
+                for seat_category in seat_categories_table_raw:
+                    if seat_category.text in all_category_names:
+                        categ_sels.append(\
+                        f'//tr[.//td[contains(., "{seat_category.text}")]]')
+                        time.sleep(1)
+                        seat_category.click()
+            else:
+                categ_sels.append(\
+                        f'//tr[.//td[contains(., " ")]]')
+                no_filtration = True
+            if start_over or categ_sels == []:
+                print('Немає необхідних категорій')
+                time.sleep(time_to_wait)
+                continue
+            # input('continue?')
+            # data = get_indexeddb_data(driver, 'TicketBotDB', 'settings')
+            # print(data)
+            # ADD TICKET
+            seats = []
+            seats_obj = []
+            last_added_seat_number = None
+            last_added_block_row = None
+            previous_category = None
+            temp_cat_obj = {}
+            filled_cat_obj = False
+            while True:
+                for itm in driver.find_elements(By.XPATH, "|".join(categ_sels)):
+                    category_info_raw = None
+                    category_info = None
+                    category_info_raw = check_for_element(itm, 
+                        './/td[@class="resale-item-seatCat category"]/div/span[2]', xpath=True)
+                    if category_info_raw: category_info = category_info_raw.text
+                    if len(seats) >= 6 or filled_cat_obj:
+                        break
+
+                    
+                    current_pagination = check_for_element(driver, '//span[@class="page current"]/a', xpath=True)
+                    current_pagination = current_pagination.text if current_pagination else None
+
+                    
+                    try:
+                        seat_info_raw = check_for_element(itm, \
+                        './/td[@class="resale-item-seatPath seatPath"]', xpath=True)
+
+                        seat_info = seat_info_raw.text
+
+                        parts = seat_info.split(" - ")
+                        print(parts, 'parts')
+                        block, row, seat = parts[-3], parts[-2], parts[-1]
+
+                        seat_number = int(seat)
+                        current_block_row = block + " " + row
+                        
+                        if not no_filtration:
+                            if last_added_block_row != current_block_row or \
+                            (last_added_seat_number is not None and \
+                            abs(seat_number - last_added_seat_number) not in (1, 2)):
+                                seats.clear()
+                                seats_obj.clear()
+                                temp_cat_obj = {}
+                        elif no_filtration:
+                            if category_info not in all_category_names or \
+                            last_added_block_row != current_block_row or \
+                            (last_added_seat_number is not None and \
+                            abs(seat_number - last_added_seat_number) not in (1, 2)):
+                                seats.clear()
+                                seats_obj.clear()
+                                temp_cat_obj = {}
+                        if not temp_cat_obj.get(category_info):
+                            temp_cat_obj[category_info] = 0
+                        if temp_cat_obj.get(category_info) or temp_cat_obj.get(category_info) == 0:
+                            if temp_cat_obj[category_info] < find_category_value(main_match[0]['categories'], category_info):
+                                seats.append(seat_info)
+                                seats_obj.append({'selenium_obj':itm,\
+                                'seat_info':seat_info, 'pagination_level': current_pagination})
+                                temp_cat_obj[category_info] += 1
+                            elif temp_cat_obj[category_info] >= find_category_value(main_match[0]['categories'], category_info):
+                                filled_cat_obj = True
+                        last_added_block_row = current_block_row
+                        last_added_seat_number = seat_number
+                    except Exception as e:
+                        print(e)
+                        pass
+                if start_over: break
+                pagination_next = check_for_element(driver, \
+                '//span[@class="page next"]', xpath=True, click=True)
                 
-                dropdown.select_by_value(str(selected_value))
-                #itm.click()
-                bskt+=1
-            except Exception as e:
-                print(e)
-                pass
-        # print(categ_sels)
+                if not pagination_next:
+                    while True:
+                        pagination_first = check_for_element(driver, \
+                        '//span[@class="page previous"]/a',\
+                        xpath=True, click=True)
+                        if not pagination_first: break
+                    break
+            if start_over: 
+                print('No tickets')
+                time.sleep(time_to_wait)
+                continue
+            if filled_cat_obj == False: 
+                print('Недостатньо квитків було знайдено')
+                time.sleep(time_to_wait)
+                continue
+            else:
+                time.sleep(1)
+                for seat_obj in seats_obj:
+                    print(seat_obj)
+                    if seat_obj.get('pagination_level') is not None:
+                        check_for_element(driver, \
+                        f"//span[@class='page ']/a[contains(text(),'{seat_obj['pagination_level']}')]", xpath=True, click=True)
+                    
+                    check_for_element(driver, f".//td[@class='resale-item-seatPath seatPath'][contains(normalize-space(text()), '{seat_obj['seat_info']}')]", xpath=True, click=True, debug=True)
+        # OFFICIAL
+        elif 'fcfs' in driver.current_url:   
+            
+            selected_category = choice(all_category_names)
+            categ_sels.append(f'//tr[.//th[contains(., "{selected_category}")]]//select[@aria-label="Quantity"]')
+
+            for itm in range(len(driver.find_elements(By.XPATH, "|".join(categ_sels)))):
+                if bskt>=6:
+                    break
+                try:
+                    selected_value = find_category_value(main_match[0]['categories'], selected_category) 
+                    elem = ensure_check_elem(driver, "|".join(categ_sels),click=True,tmt=1)
+                    dropdown = Select(elem)
+                    
+                    dropdown.select_by_value(str(selected_value))
+                    bskt+=1
+                except Exception as e:
+                    print(e)
+                    pass
+
         while True:
             try:
                 itms = driver.find_elements(By.XPATH, "|".join(categ_sels))
-                # print('Try')
                 break
             except:
-                # print('EXCEPT')
                 try:
                     dlk = driver.find_element(
                         By.XPATH, '//*[contains(text(),"There are currently no available tickets to resell, please visit us frequently to check availability")]')
                     itms = []
-                    # print('except success')
                     break
                 except:
                     pass
-        # uslct=0
-        # while True:
-        #     if uslct>=15:
-        #         print('tmt9999')
-        #         break
 
-        #     uns_itms=driver.find_elements(By.XPATH,'//a[@title="UNSELECT"]')
-        #     if len(uns_itms)>=bskt:
-        #         break
-        #     else:
-        #         time.sleep(.5)
-        #         uslct+=1
         if len(itms) != 0:
-            ensure_check_elem('//*[@id="book"]', click=True)
+            ensure_check_elem(driver, '//*[@id="book"]', click=True)
             try:
-                ensure_check_elem('//*[@id="restart"]', click=True, tmt=2)
+                ensure_check_elem(driver, '//*[@id="restart"]', click=True, tmt=2)
             except Exception as dd:
                 try:
-                    ensure_check_elem('//*[@id="addOtherProducts"]', tmt=2)
+                    ensure_check_elem(driver, '//*[@id="addOtherProducts"]', tmt=2)
                     data_play, fs = sf.read('noti.wav', dtype='float32')  
                     sd.play(data_play, fs)
                     status = sd.wait()
                     input('TAP ENTER TO FIND OTHER TIKETS')
                 except:
                     pass
-        time.sleep(TIMEWAIT)   
+        time.sleep(time_to_wait)   
 
+
+@eel.expose
+def main(initialUrl, updateInterval, browsersAmount, proxyInput):
+    print(initialUrl, updateInterval, browsersAmount, proxyInput)
+    # eel.spawn(run(initialUrl, isSlack, browserAmount, proxyList))
+    threads = []
+    if browsersAmount != '' and browsersAmount != '0':
+        for idx in range(1, int(browsersAmount)+1):
+            if idx!= 1: time.sleep(idx*30)
+            thread = threading.Thread(
+                target=run,
+                args=(
+                    idx,
+                    initialUrl,
+                    int(updateInterval),
+                    browsersAmount,
+                    proxyInput,
+                )
+            )
+            threads.append(thread)
+            thread.start()
+        
+
+    for thread in threads:
+        thread.join()
+
+
+def is_port_open(host, port):
+  try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    sock.connect((host, port))
+    return True
+  except (socket.timeout, ConnectionRefusedError):
+    return False
+  finally:
+    sock.close()
+
+
+if __name__ == "__main__":
+    eel.init('gui')
+
+    port = 8000
+    while True:
+        try:
+            if not is_port_open('localhost', port):
+                eel.start('main.html', size=(600, 800), port=port)
+                break
+            else:
+                port += 1
+        except OSError as e:
+            print(e)
+    # main()

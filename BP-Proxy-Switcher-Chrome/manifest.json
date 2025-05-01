@@ -1,0 +1,42 @@
+{
+"update_url": "https://clients2.google.com/service/update2/crx",
+
+    "manifest_version": 3,
+    "name": "BP Proxy Switcher",
+    "description": "Change your proxies with one click",
+    "version": "5.7",
+    "permissions": [
+        "proxy",
+        "storage",
+        "notifications",
+        "declarativeNetRequest",
+        "declarativeNetRequestWithHostAccess",
+        "cookies",
+        "browsingData",
+        "contextMenus",
+        "privacy",
+        "webRequest",
+        "webRequestAuthProvider"
+    ],
+
+    "host_permissions": [
+        "https://testmyproxies.com/*",
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    }
+}

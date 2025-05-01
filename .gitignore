@@ -25,6 +25,8 @@ bin/
 include/
 lib/
 lib/python*/site-packages/
+pip
+pip/
 
 # Python environment files
 *.env
@@ -108,6 +110,7 @@ out/
 .vite/
 
 # etc.
-
+temp.py
 /extensions
 extensions
+extension
