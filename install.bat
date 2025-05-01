@@ -1,6 +1,6 @@
 @echo off
 
-set "project_dir=..\stadefrance_resale-python"
+set "project_dir=..\stadefrance-bot-python-main"
 set "venv_dir=%project_dir%"
 
 rem Create virtual environment

@@ -10,3 +10,8 @@ def ua():
         uas=[x.strip() for x in ugs.readlines()]
         ugs.close()
     return choice(uas)
+
+def parse_seat_info(seat_info):
+    # Returns section, block, row(int), seat(int)
+    section, block, row_str, seat_str = seat_info.split(' - ')
+    return section, block, row_str, int(seat_str)

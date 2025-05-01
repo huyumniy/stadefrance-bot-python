@@ -256,3 +256,65 @@ def get_indexeddb_data(driver, db_name, store_name):
     }};
     """
     return driver.execute_async_script(script)
+
+def add_proxy_switcher(driver, proxyInput):
+    """
+    Adds the proxy switcher extension to the Selenium WebDriver instance.
+
+    Args:
+        driver (webdriver): The Selenium WebDriver instance.
+        proxyInput (str): The proxy input string.
+
+    Returns:
+        None
+    """
+    driver.get('chrome://extensions/')
+    time.sleep(1)
+
+    # Example script to retrieve extensions
+    script_array = """
+                const callback = arguments[0];
+                chrome.management.getAll((extensions) => {
+                    callback(extensions);
+                });
+            """
+
+    # Execute the JavaScript and get the result
+    extensions = driver.execute_async_script(script_array)
+    filtered_extensions = [extension for extension in extensions if "BP Proxy Switcher" in extension['name']]
+
+    extension_id = [extension['id'] for extension in filtered_extensions if 'id' in extension][0]
+    extension_url = f'chrome-extension://{extension_id}/popup.html'
+    driver.get(extension_url)
+    # proxies = parse_data_from_file('proxies.txt')
+    delete_tab = driver.find_element(By.XPATH, '//*[@id="deleteOptions"]')
+    driver.execute_script("arguments[0].scrollIntoView();", delete_tab)
+    delete_tab.click()
+    time.sleep(1)
+    driver.find_element(By.XPATH, '//*[@id="privacy"]/div[1]/input').click()
+    driver.find_element(By.XPATH, '//*[@id="privacy"]/div[2]/input').click()
+    driver.find_element(By.XPATH, '//*[@id="privacy"]/div[4]/input').click()
+    driver.find_element(By.XPATH, '//*[@id="privacy"]/div[7]/input').click()
+    optionsOK = driver.find_element(By.XPATH, '//*[@id="optionsOK"]')
+    driver.execute_script("arguments[0].scrollIntoView();", optionsOK)
+    optionsOK.click()
+    time.sleep(1)
+    edit = driver.find_element(By.XPATH, '//*[@id="editProxyList"]/small/b')
+    driver.execute_script("arguments[0].scrollIntoView();", edit)
+    edit.click()
+    time.sleep(1)
+    text_area = driver.find_element(By.XPATH, '//*[@id="proxiesTextArea"]')
+    text_area.send_keys(proxyInput)
+    time.sleep(1)
+    ok_button = driver.find_element(By.XPATH, '//*[@id="addProxyOK"]')
+    driver.execute_script("arguments[0].scrollIntoView();", ok_button)
+    ok_button.click()
+    time.sleep(3)
+    proxy_switch_list = driver.find_elements(By.CSS_SELECTOR, '#proxySelectDiv > div > div > ul > li')
+    if len(proxy_switch_list) == 3: proxy_switch_list[2].click()
+    else: proxy_switch_list[randint(2, len(proxy_switch_list))-1].click()
+    time.sleep(5)
+    proxy_auto_reload_checkbox = driver.find_element(By.XPATH, '//*[@id="autoReload"]')
+    driver.execute_script("arguments[0].scrollIntoView();", proxy_auto_reload_checkbox)
+    proxy_auto_reload_checkbox.click()
+    time.sleep(2)
