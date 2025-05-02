@@ -1,10 +1,10 @@
 import time
 from selenium.webdriver.common.by import By
-from random import choice, randint
+from random import choice, randint, sample
 from selenium.webdriver.support.ui import Select
 import soundfile as sf
 import sounddevice as sd
-from helpers import find_category_value, ua, parse_seat_info
+from helpers import find_category_value, ua, parse_seat_info, match_seat_info
 from selenium_helpers import loginorfindx, check_for_element, \
  check_for_elements, ensure_check_elem, init_selenium_driver, \
  get_indexeddb_data, handle_captcha_solve, wait_for_element, \
@@ -14,8 +14,6 @@ import eel
 import socket
 import threading
 from collections import defaultdict
-
-isInitialRun = True
 
 
 class TicketManager:
@@ -57,9 +55,7 @@ class ResaleTicketManager(TicketManager):
                 time.sleep(1)
         return valid_categories
 
-    # TODO: add filtration for standing tickets (pitch, gold pitch)
     def collect(self, valid_categories):
-        seats = []
         seats_obj = []
 
         categ_sels = [
@@ -75,15 +71,10 @@ class ResaleTicketManager(TicketManager):
                 current_pagination = current_pagination.text if current_pagination else None
 
                 seat_info_raw = check_for_element(itm, './/td[@class="resale-item-seatPath seatPath"]', xpath=True)
-                seat_info = seat_info_raw.text
-                seaction, block, row, seat = parse_seat_info(seat_info)
-                
-                seat_number = int(seat)
-                current_block_row = block + " " + row
-
-                seats.append(seat_info)
+                seat_info = match_seat_info(seat_info_raw.text)
                 seats_obj.append({  'category': category_info,
                                     'seat_info': seat_info,
+                                    'name': seat_info_raw.text,
                                     'pagination_level': current_pagination})
 
             pagination_next = check_for_element(self.driver, '//span[@class="page next"]', xpath=True, click=True)
@@ -93,30 +84,40 @@ class ResaleTicketManager(TicketManager):
                     if not pagination_first:
                         break
                 break
-
+        
         return seats_obj
 
     
     def select(self, data, requests):
         """
-        Returns a *random* run of `desired_count` adjacent seats
-        (as raw dicts), or None if no such run exists.
+        data: list of dicts, some of which may have 'seat_info': None
+        requests: as before
         """
         MAX_SEATS = 6
         output = {}
+
         for req in requests:
-            # 1) Build all picks per category exactly as before
             temp = {}
             for cat in req['categories']:
                 name, min_req = cat['name'], cat['value']
-                bucket = [e for e in data if e['category'].lower() == name.lower()]
-                
-                # group & find contiguous runs
+
+                # bucket all entries of this category
+                bucket = [e for e in data if e.get('category','').lower() == name.lower()]
+                # split out those missing seat_info
+                unknown = [e for e in bucket if not e.get('seat_info')]
+                known   = [e for e in bucket if e.get('seat_info')]
+
+                # if we have at least min_req unknown seats, just pick those
+                if len(unknown) >= min_req:
+                    temp[name] = sample(unknown, min_req)
+                    continue
+
+                # otherwise, proceed with contiguous-seat logic on 'known' only
                 groups = defaultdict(list)
-                for e in bucket:
+                for e in known:
                     sec, blk, row, num = parse_seat_info(e['seat_info'])
                     groups[(sec, blk, row)].append((num, e))
-                
+
                 segments = []
                 for seq in groups.values():
                     seq.sort(key=lambda x: x[0])
@@ -128,8 +129,8 @@ class ResaleTicketManager(TicketManager):
                             segments.append(cur)
                             cur = [curr]
                     segments.append(cur)
-                
-                # filter + chop to MAX_SEATS
+
+                # now build candidate runs (respecting MAX_SEATS)
                 candidates = []
                 for seg in segments:
                     rows = [e for _, e in seg]
@@ -141,29 +142,27 @@ class ResaleTicketManager(TicketManager):
                             candidates.append(rows[i : i + MAX_SEATS])
                     else:
                         candidates.append(rows)
-                
-                # pick best for this category
+
+                # pick best contiguous run if any
                 if candidates:
                     best_len = max(len(c) for c in candidates)
                     top_runs = [c for c in candidates if len(c) == best_len]
                     temp[name] = choice(top_runs)
                 else:
                     temp[name] = None
-            
-            # 2) find the global max length among categories
-            lengths = [len(run) for run in temp.values() if run]
-            if lengths:
-                max_len = max(lengths)
-                # only keep categories whose run length == max_len
+
+            # of all categories for this match, keep only those with the global max length
+            runs = [r for r in temp.values() if r]
+            if runs:
+                max_len = max(len(r) for r in runs)
                 output[req['match']] = {
                     cat: run
                     for cat, run in temp.items()
-                    if run and len(run) == max_len
+                    if run and len(run) >= max_len
                 }
             else:
-                # no valid runs at all
                 output[req['match']] = {}
-        
+
         return output
 
 
@@ -172,7 +171,7 @@ class ResaleTicketManager(TicketManager):
             if seat.get('pagination_level') is not None:
                 check_for_element(self.driver, \
                 f"//span[@class='page ']/a[contains(text(),'{seat['pagination_level']}')]", xpath=True, click=True)
-            check_for_element(self.driver, f".//td[@class='resale-item-seatPath seatPath'][contains(normalize-space(text()), '{seat['seat_info']}')]", xpath=True, click=True, debug=True)
+            check_for_element(self.driver, f".//td[@class='resale-item-seatPath seatPath'][contains(normalize-space(text()), '{seat['name']}')]", xpath=True, click=True, debug=True)
 
 
 class OfficialTicketManager(TicketManager):
@@ -198,7 +197,6 @@ class OfficialTicketManager(TicketManager):
 
 def run(thread, link, time_to_wait, browsersAmount, proxyInput):
     INPUT = 'input.xlsx'
-    # TODO: check if multiple teams works properly
     selxs_static = genselx(xlsx_name=INPUT)
     
     driver = init_selenium_driver(proxyInput)
@@ -260,7 +258,13 @@ def run(thread, link, time_to_wait, browsersAmount, proxyInput):
             continue
 
         tickets = manager.select(desired_seats, main_match)
-        # TODO: add check for empty tickets
+        
+        match_tickets = list(tickets[title].values())
+        if not match_tickets:
+            print(f"No tickets available for {title!r}")
+            time.sleep(time_to_wait)
+            continue
+
         manager.add_to_cart(choice(list(tickets[title].values())))
         ensure_check_elem(driver, '//*[@id="book"]', click=True)
         try:
@@ -326,4 +330,3 @@ if __name__ == "__main__":
                 port += 1
         except OSError as e:
             print(e)
-    # main()
