@@ -8,6 +8,7 @@ import json
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from random import randint
 
 
 def check_for_element(driver, selector, click=False, xpath=False, debug=False):
