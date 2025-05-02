@@ -57,7 +57,7 @@ class ResaleTicketManager(TicketManager):
                 time.sleep(1)
         return valid_categories
 
-
+    # TODO: add filtration for standing tickets (pitch, gold pitch)
     def collect(self, valid_categories):
         seats = []
         seats_obj = []
@@ -198,8 +198,9 @@ class OfficialTicketManager(TicketManager):
 
 def run(thread, link, time_to_wait, browsersAmount, proxyInput):
     INPUT = 'input.xlsx'
+    # TODO: check if multiple teams works properly
     selxs_static = genselx(xlsx_name=INPUT)
-
+    
     driver = init_selenium_driver(proxyInput)
 
     if proxyInput != '': add_proxy_switcher(driver, proxyInput)
@@ -259,7 +260,7 @@ def run(thread, link, time_to_wait, browsersAmount, proxyInput):
             continue
 
         tickets = manager.select(desired_seats, main_match)
-        
+        # TODO: add check for empty tickets
         manager.add_to_cart(choice(list(tickets[title].values())))
         ensure_check_elem(driver, '//*[@id="book"]', click=True)
         try:
