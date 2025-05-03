@@ -214,7 +214,7 @@ def run(thread, link, time_to_wait, browsersAmount, proxyInput):
         driver.execute_cdp_cmd(
             'Network.setUserAgentOverride', {"userAgent": ua()})
         time.sleep(2)
-        driver.execute_script(f"window.open('{link}/','_self')")
+        driver.get(link)
         check_for_element(driver, '//*[@id="onetrust-accept-btn-handler"]', xpath=True, click=True)
 
         if 'peak35' not in driver.current_url:
